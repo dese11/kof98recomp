@@ -140,7 +140,13 @@ static int same_columns(const uint16_t *vram, int first, int last, int rows) {
     return 1;
 }
 
-#ifdef KOF98_ASSET_DIR
+static char s_asset_directory[1024];
+void kof98_set_asset_directory(const char *path) {
+    s_asset_directory[0]='\0';
+    if (path && strlen(path)<sizeof(s_asset_directory)) strcpy(s_asset_directory,path);
+}
+
+#if defined(KOF98_ASSET_DIR) || defined(KOF98_DYNAMIC_ASSETS)
 /* Loaded art, and the 16-pixel columns cut from it (16 indices per line,
  * 512 lines), made once per background and X. */
 static struct { uint8_t *png; int w, h, tried; } s_art[N_BACKGROUNDS];
@@ -156,7 +162,11 @@ static const uint8_t *art_column(int bg, int x) {
                 break;
             }
         if (!s_art[bg].png) {
-            const char *dir = getenv("KOF98_ASSETS") ? getenv("KOF98_ASSETS") : KOF98_ASSET_DIR;
+            const char *dir = s_asset_directory;
+#ifdef KOF98_ASSET_DIR
+            if (!*dir) dir = getenv("KOF98_ASSETS") ? getenv("KOF98_ASSETS") : KOF98_ASSET_DIR;
+#endif
+            if (!*dir) return NULL;
             char path[1024];
             snprintf(path, sizeof(path), "%s/%s", dir, k_backgrounds[bg].art);
             FILE *f = fopen(path, "rb");

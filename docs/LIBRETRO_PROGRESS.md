@@ -121,3 +121,88 @@ Toolkit AST: `7c9eb568db3de0478f724a7ab4416a8cd106cf8f`, fijado en el submódulo
 - Límites: loop de pista completa; fades con envolvente lineal aproximada.
   Falta exponer original/AST, volumen y ruta del paquete en el adaptador
   libretro y probarlos realmente en el Flatpak. Véase `ast.md`.
+
+## Hitos 2–3: MVP libretro local — 26 de octubre de 2026
+
+El usuario confirmó la escucha correcta del AST en el standalone antes de
+iniciar este hito. Se implementó `libretro/core.c` y el target local
+`kof98_libretro.so`, con la API obligatoria, dos RetroPads, reset, carga/descarga,
+vídeo XRGB8888, audio estéreo por bloques y fallback por muestra. Solo exporta
+las 25 funciones obligatorias `retro_*`; no enlaza SDL ni bibliotecas de imagen
+externas. `retro_serialize_size()==0`, serialización falsa, memoria no expuesta:
+no hay savestates, rewind, run-ahead, netplay ni guardados persistentes aún.
+
+Opciones: panorámica 400×224 activada, música automática (AST si hay paquete),
+AES original/AST obligatorio y volumen 0–100 en caliente. Cambiar panorámica o
+soundtrack requiere cerrar y cargar el contenido; reset conserva las opciones
+de la sesión. Assets dinámicos, sin rutas compiladas del checkout en el core.
+El toolkit añade únicamente el control de volumen en vivo; commit fijado:
+`175cd96efe9edb71d2a134314731427afbf8740c`.
+
+Contenido: `242-pn1.bin` y el set AES completo. El build genera en privado las
+identidades de 20 archivos (16 de juego y 4 de sistema), tamaño y SHA-256. El
+core las valida antes de iniciar; BIOS por grupo en system/kof98, system o
+contenido. La carpeta seleccionada se conserva aunque P1 sea un enlace: una
+prueba negativa detectó y permitió corregir la resolución inicial al destino
+del enlace. Los archivos P son dependencias del generador; copiar únicamente
+salidas diferentes evita recompilar todo el programa al cambiar los assets o
+el frontend. Se comprobó una regeneración sin recompilar ninguno de los 16
+fragmentos idénticos. La cabecera oficial libretro está vendorizada y fijada.
+
+Build Release GCC 15.2.1: los cuatro compiladores de los fragmentos agotaron RAM
+y swap. Se terminó con `-j2`, recomendado en este host de 16 GiB. Se exploró
+reutilizar objetos idénticos comprobando código y cabeceras byte por byte;
+Ninja invalidó su metadata y finalmente recompiló los fragmentos normalmente.
+No se depende de esa copia temporal para el build reproducible.
+
+Verificación:
+
+- Suite pública sin ROM/SDL: 4/4 (AST, errores de ciclo de vida, SHA-256 con
+  longitudes que cruzan los bloques/relleno, contrato libretro sin contenido).
+- Suite local: AST, ciclo de vida de 16 800 frames y contrato del `.so` de
+  16 800 frames aprobados. Tras corregir la resolución de enlaces, también
+  pasaron errores de ROM faltante, tamaño, identidad y BIOS incompleta.
+- El contrato prueba las 25 exportaciones con `dlopen`, ambas entradas,
+  puertos desconectados/reconectados, tamaños/timing/pitch, batch y fallback,
+  reset y recargas, ausencia de serialización y APIs opcionales coherentes.
+- Harness del `.so` real dentro del Flatpak con AST y assets: 4×4 200 frames,
+  3 942 400 pares de audio por sesión y hashes repetibles idénticos al motor:
+  320 `1d1ca6489e15566d`, 400 `7bb9b345ab477a13`. Bloques recompilados positivos
+  (aprox. 1,86 millones por sesión); comandos AST 21, 28, 23 y 3c observados.
+- Standalone 1 200 frames: PNG del frame 1199 y WAV idénticos byte por byte
+  al baseline. El proyecto original y la AppImage permanecen intactos.
+- ELF: NEEDED libstdc++, libm, libgcc_s, libc y cargador; GLIBC máxima 2.33,
+  GLIBCXX 3.4 y CXXABI 1.3.9. Sin RPATH/SDL; carga real aprobada en KDE 6.11
+  (glibc 2.42). Se utilizó ABI comprobada del contenedor, sin instalar el SDK.
+- RetroArch Flatpak 1.22.2 real: 1 200 frames / 20 segundos, 400×224,
+  59,19 Hz, 55 555,56 Hz anunciados, GL Wayland y PulseAudio inicializados,
+  AST pista 39. Captura GPU privada inspeccionada: intro visible y correcta;
+  su resolución 1500×840 es la de presentación, no el buffer nativo.
+  Al descargar: 268 275 bloques nativos y 11 753 534 instrucciones interpretadas,
+  exactamente los contadores del baseline de 1 200 frames.
+
+Instalación realizada en la ruta de cores configurada del usuario. El instalador
+copia únicamente este core, `.info` y dos PNG y enlaza el paquete AST privado;
+no duplica las pistas ni mueve las ROM. Lanzador y overlay bajo
+`~/.var/app/org.libretro.RetroArch/config/retroarch/kof98-recomp/`.
+Se comprobó el SHA-256 de `retroarch.cfg` antes/después: no cambió. El `.info`
+usa un directorio exclusivo del lanzador con `--appendconfig`, sin reemplazar
+el directorio global de metadatos. Instalar/actualizar/desinstalar se probó en
+carpeta temporal; la desinstalación conserva archivos modificados y las pistas.
+
+La primera prueba gráfica se pausó por la preferencia existente de perder foco.
+Para completar la captura se desactivó solo en un overlay privado de prueba;
+el lanzador de uso normal conserva esa preferencia. No se cambiaron permisos
+Flatpak, drivers ni opciones gráficas/audio globales. RetroArch escribió sus
+opciones del core y su registro de uso mediante sus mecanismos normales.
+
+Pendiente de aceptación humana: jugar un combate en el frontend con mandos
+físicos, ambos jugadores, escuchar continuidad de audio y comprobar pausa/reset
+interactivos y recarga desde el menú. La prueba automatizada cubre combate y
+entradas de ambos jugadores; no acredita por sí sola los dispositivos físicos.
+Savestates y netplay quedan explícitamente para los siguientes hitos.
+
+Uso y desinstalación reproducibles: `docs/libretro.md` y
+`scripts/install_libretro.py`. Lanzar: `./scripts/run_libretro.sh` desde el
+checkout o ejecutar su ruta absoluta desde cualquier carpeta. No publicar el
+core generado, ROM/BIOS, manifests privados, pistas ni capturas.

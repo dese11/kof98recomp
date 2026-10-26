@@ -45,11 +45,20 @@ if(KOF98_ROM_DIR)
         file(WRITE ${KOF98_ENTRIES} "")
     endif()
     file(MAKE_DIRECTORY ${GEN_DIR})
+    set(STAGED_SOURCES)
+    foreach(generated IN LISTS GEN_SOURCES)
+        get_filename_component(base_name "${generated}" NAME)
+        list(APPEND STAGED_SOURCES "${GEN_DIR}/staging/${base_name}")
+    endforeach()
+    list(APPEND STAGED_SOURCES "${GEN_DIR}/staging/recomp_common.h")
     add_custom_command(
         OUTPUT ${GEN_SOURCES} ${GEN_DIR}/recomp_common.h
-        COMMAND kof98_recomp --rom-path ${KOF98_ROM_DIR} --out ${GEN_DIR} --files ${GEN_FILES}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${GEN_DIR}/staging
+        COMMAND kof98_recomp --rom-path ${KOF98_ROM_DIR} --out ${GEN_DIR}/staging --files ${GEN_FILES}
                 --entries ${KOF98_ENTRIES}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${STAGED_SOURCES} ${GEN_DIR}
         DEPENDS kof98_recomp ${KOF98_ENTRIES}
+                "${KOF98_ROM_DIR}/242-pn1.bin" "${KOF98_ROM_DIR}/242-p2.bin"
         COMMENT "Recompiling The King of Fighters '98 from ${KOF98_ROM_DIR}")
     add_library(kof98_generated OBJECT ${GEN_SOURCES})
     target_link_libraries(kof98_generated PRIVATE neogeorecomp_runtime)
@@ -121,7 +130,7 @@ endif()
 option(KOF98_BUILD_RUNTIME_TESTS "Build the host-neutral lifecycle harness" OFF)
 if(KOF98_BUILD_RUNTIME_TESTS)
     enable_testing()
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    find_package(Python3 3.11 COMPONENTS Interpreter REQUIRED)
     add_executable(kof98_ast_test tests/ast.c ${NEOGEORECOMP_DIR}/src/ast.c)
     target_include_directories(kof98_ast_test PRIVATE ${NEOGEORECOMP_DIR}/src)
     add_test(NAME ast_synthetic COMMAND ${Python3_EXECUTABLE}
@@ -136,5 +145,69 @@ if(KOF98_BUILD_RUNTIME_TESTS)
         add_test(NAME runtime_lifecycle COMMAND kof98_runtime_test ${KOF98_ROM_DIR})
     else()
         add_test(NAME runtime_invalid_load COMMAND kof98_runtime_test)
+    endif()
+endif()
+
+# The libretro core always contains locally recompiled code. No interpreter-only
+# core is offered; public/no-ROM builds can still compile the adapter harness.
+if(KOF98_ROM_DIR)
+    set(core_default ON)
+else()
+    set(core_default OFF)
+endif()
+option(KOF98_BUILD_LIBRETRO "Build the local libretro shared core (requires ROMs)" ${core_default})
+if(KOF98_BUILD_LIBRETRO)
+    if(NOT KOF98_ROM_DIR)
+        message(FATAL_ERROR "KOF98_BUILD_LIBRETRO requires KOF98_ROM_DIR")
+    endif()
+    find_package(Python3 3.11 COMPONENTS Interpreter REQUIRED)
+    set(IDENTITY_ROMS 242-pn1.bin 242-p2.bin 242-s1.bin 242-mg1.bin
+        242-c1.bin 242-c2.bin 242-c3.bin 242-c4.bin
+        242-c5.bin 242-c6.bin 242-c7.bin 242-c8.bin
+        242-v1.bin 242-v2.bin 242-v3.bin 242-v4.bin
+        neo-po.bin sfix.sfix sm1.sm1 000-lo.lo)
+    list(TRANSFORM IDENTITY_ROMS PREPEND "${KOF98_ROM_DIR}/")
+    add_custom_command(OUTPUT ${GEN_DIR}/rom_identity.h
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/rom_identity.py
+                ${KOF98_ROM_DIR} ${GEN_DIR}/rom_identity.h
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/scripts/rom_identity.py ${IDENTITY_ROMS}
+        COMMENT "Recording private SHA-256 identity of the local ROM/BIOS set")
+    add_library(kof98_libretro SHARED libretro/core.c libretro/content.c src/game.c
+        ${GEN_DIR}/rom_identity.h $<TARGET_OBJECTS:kof98_generated>)
+    target_link_libraries(kof98_libretro PRIVATE neogeorecomp_runtime)
+    target_include_directories(kof98_libretro PRIVATE src libretro ${GEN_DIR})
+    target_compile_definitions(kof98_libretro PRIVATE KOF98_HAVE_RECOMP KOF98_DYNAMIC_ASSETS)
+    set_target_properties(kof98_libretro PROPERTIES PREFIX "" OUTPUT_NAME "kof98_libretro"
+        C_VISIBILITY_PRESET hidden CXX_VISIBILITY_PRESET hidden)
+    if(UNIX AND NOT APPLE)
+        target_link_options(kof98_libretro PRIVATE
+            "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/libretro/exports.map"
+            "LINKER:--no-undefined")
+        set_property(TARGET kof98_libretro APPEND PROPERTY LINK_DEPENDS
+            ${CMAKE_CURRENT_SOURCE_DIR}/libretro/exports.map)
+    endif()
+    if(NOT MSVC)
+        target_compile_options(kof98_libretro PRIVATE -Wall -Wextra)
+    endif()
+endif()
+if(KOF98_BUILD_RUNTIME_TESTS)
+    add_test(NAME content_identity_synthetic COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/content_vectors.py ${CMAKE_C_COMPILER} ${CMAKE_CURRENT_SOURCE_DIR})
+    add_executable(kof98_libretro_test tests/libretro.c)
+    target_include_directories(kof98_libretro_test PRIVATE libretro)
+    target_link_libraries(kof98_libretro_test PRIVATE ${CMAKE_DL_LIBS})
+    if(KOF98_BUILD_LIBRETRO)
+        add_test(NAME libretro_contract COMMAND kof98_libretro_test
+            $<TARGET_FILE:kof98_libretro> ${KOF98_ROM_DIR})
+        add_test(NAME libretro_content_errors COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/libretro_content.py $<TARGET_FILE:kof98_libretro_test>
+            $<TARGET_FILE:kof98_libretro> ${KOF98_ROM_DIR})
+    else()
+        add_library(kof98_libretro_stub SHARED libretro/core.c libretro/content.c src/game.c)
+        target_link_libraries(kof98_libretro_stub PRIVATE neogeorecomp_runtime)
+        target_include_directories(kof98_libretro_stub PRIVATE src libretro)
+        target_compile_definitions(kof98_libretro_stub PRIVATE KOF98_DYNAMIC_ASSETS)
+        add_test(NAME libretro_invalid_load COMMAND kof98_libretro_test
+            $<TARGET_FILE:kof98_libretro_stub>)
     endif()
 endif()

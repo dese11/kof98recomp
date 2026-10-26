@@ -32,3 +32,13 @@ jobs:
 
       - name: Build
         run: cmake --build build --config Release --parallel
+
+      - name: Configure public libretro checks (Linux, no ROMs or SDL)
+        if: runner.os == 'Linux'
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DKOF98_BUILD_RUNTIME_TESTS=ON -DCMAKE_DISABLE_FIND_PACKAGE_SDL2=TRUE
+
+      - name: Test public libretro checks (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cmake --build build --parallel 2
+          ctest --test-dir build --output-on-failure

@@ -21,6 +21,16 @@ int main(int argc,char **argv) {
     for (int i=0;i<4000;i++) sound[i]=500;
     ast_mix(sound,1);
     CHECK(sound[0]==1500 && sound[1]==-500); /* effect + CD stereo, not a replacement of all sound */
+    ast_set_volume(0);
+    sound[0]=500; sound[1]=500; ast_mix(sound,1);
+    CHECK(sound[0]==500 && sound[1]==500); /* live gain leaves effects */
+    ast_set_volume(50); ast_command(0x20); ast_command(0x30);
+    sound[0]=500; sound[1]=500; ast_mix(sound,1);
+    CHECK(sound[0]==1000 && sound[1]==0);
+    ast_set_volume(101); ast_command(0x20); ast_command(0x30);
+    sound[0]=500; sound[1]=500; ast_mix(sound,1);
+    CHECK(sound[0]==1000 && sound[1]==0); /* invalid gain ignored */
+    ast_set_volume(100);
     memset(sound,0,sizeof(sound)); ast_mix(sound,2000);
     CHECK(ast_current_track()==13); /* tiny track looped many times */
     CHECK(ast_command(0xd0)==0 && ast_current_track()==13); /* sound effect passes through */
