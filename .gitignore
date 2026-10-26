@@ -1,4 +1,5 @@
 build/
+build-*/
 cmake-build-*/
 .vs/
 .vscode/
@@ -46,6 +47,15 @@ roms/
 generated/
 entries*.txt
 *.mp4
+*.wav
+*.so
+*.bin
+*.AppImage
+captures/
+profiles/
+states/
+dist/
+packaging/
 
 # Setup.cmd output
 deps/

@@ -198,7 +198,17 @@ static const uint8_t *art_column(int bg, int x) {
     s_cols[s_ncols - 1].empty = !any;
     return any ? px : NULL;
 }
+static void unload(void) {
+    for (int i = 0; i < N_BACKGROUNDS; i++) {
+        int shared = 0;
+        for (int j = 0; j < i; j++) if (s_art[j].png == s_art[i].png) shared = 1;
+        if (!shared) free(s_art[i].png);
+    }
+    memset(s_art, 0, sizeof(s_art));
+    free(s_cols); s_cols = NULL; s_ncols = 0;
+}
 #else
+static void unload(void) {}
 static const uint8_t *art_column(int bg, int x) { (void)bg; (void)x; return NULL; }
 #endif
 
@@ -309,4 +319,5 @@ const ng_game_t k_kof98 = {
     .patch = patch,
     .live_words = k_live_words,
     .extend = extend,
+    .unload = unload,
 };

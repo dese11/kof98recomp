@@ -51,7 +51,11 @@ if(KOF98_ROM_DIR)
                 --entries ${KOF98_ENTRIES}
         DEPENDS kof98_recomp ${KOF98_ENTRIES}
         COMMENT "Recompiling The King of Fighters '98 from ${KOF98_ROM_DIR}")
-    list(APPEND GAME_SOURCES ${GEN_SOURCES})
+    add_library(kof98_generated OBJECT ${GEN_SOURCES})
+    target_link_libraries(kof98_generated PRIVATE neogeorecomp_runtime)
+    target_include_directories(kof98_generated PRIVATE ${GEN_DIR})
+    set_target_properties(kof98_generated PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    list(APPEND GAME_SOURCES $<TARGET_OBJECTS:kof98_generated>)
 endif()
 
 add_executable(kof98 ${GAME_SOURCES} src/game.c)
@@ -111,4 +115,21 @@ if(WIN32 AND TARGET SDL2::SDL2)
     add_custom_command(TARGET kof98 POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_RUNTIME_DLLS:kof98> $<TARGET_FILE_DIR:kof98>
         COMMAND_EXPAND_LISTS)
+endif()
+
+# Opt-in tests use the user's local ROMs; no game data or generated C is tracked.
+option(KOF98_BUILD_RUNTIME_TESTS "Build the host-neutral lifecycle harness" OFF)
+if(KOF98_BUILD_RUNTIME_TESTS)
+    enable_testing()
+    add_executable(kof98_runtime_test tests/runtime.c src/game.c)
+    target_link_libraries(kof98_runtime_test PRIVATE neogeorecomp_runtime)
+    target_include_directories(kof98_runtime_test PRIVATE src)
+    target_compile_definitions(kof98_runtime_test PRIVATE KOF98_ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+    if(KOF98_ROM_DIR)
+        target_sources(kof98_runtime_test PRIVATE $<TARGET_OBJECTS:kof98_generated>)
+        target_compile_definitions(kof98_runtime_test PRIVATE KOF98_HAVE_RECOMP)
+        add_test(NAME runtime_lifecycle COMMAND kof98_runtime_test ${KOF98_ROM_DIR})
+    else()
+        add_test(NAME runtime_invalid_load COMMAND kof98_runtime_test)
+    endif()
 endif()
