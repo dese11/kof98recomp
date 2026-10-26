@@ -76,3 +76,48 @@ Completar el adaptador libretro y el contrato de contenido/identidad de ROM
 Instalar el SDK compatible o demostrar compatibilidad del binario concreto.
 Para los commits del desarrollo consultar `git log -1` y `toolkit.ref`.
 No se suben builds, ROM, BIOS, código generado, WAV ni capturas del usuario.
+
+## Agregado AST — 26 de octubre de 2026
+
+Toolkit AST: `7c9eb568db3de0478f724a7ab4416a8cd106cf8f`, fijado en el submódulo y en `toolkit.ref`.
+
+- Se inspeccionó el 7z local de KOF98 CD: pista de datos MODE1/2352 y 39
+  pistas de audio. Importador reproducible en `scripts/import_ast.py`;
+  paquete privado en `soundtracks/kof98-cd-ast/` (652 968 420 bytes).
+- Driver CD 1.7, SHA-256
+  `27cbfc301498ca7653fd7d3edd44c3108763906eb7fe43badd1e3eb325b5aaf7`;
+  M1 AES requerido CRC32 `4e7a6b1b`. La correspondencia de comandos se
+  extrajo del CD del usuario y se comprobó ejecutando su driver en una
+  herramienta local. El manifiesto y las grabaciones no se versionan.
+- 41 comandos alcanzan todas las pistas 02..40. Las voces, efectos y
+  argumentos siguen en el driver AES. La orden de parar música anterior
+  conserva el eco del comando que espera el 68000.
+- Mezcla PCM estéreo en el reloj del YM2610, conversión racional desde
+  44 100 Hz, volumen 0..100, one-shot/loop según el CD, reset y descarga.
+  Uso: `--ast-path DIR --ast-volume 70`; sin la ruta queda el audio original.
+- Prueba de 4 200 frames: AST activó automáticamente pistas 39, 40, 05 y 22;
+  captura final idéntica a la referencia y los mismos 1 901 690 bloques
+  nativos. El WAV conserva 3 942 400 pares; cambia con AST y coincide
+  byte por byte con la referencia al desactivar AST. Con volumen externo
+  cero sigue habiendo efectos/voces; se comprobó además con mezcla sintética.
+- Cuatro recargas con AST (16 800 frames) repiten hashes:
+  320 píxeles `1d1ca6489e15566d`; 400 píxeles `7bb9b345ab477a13`.
+  Cada sesión produce 3 942 400 pares. Reset y parámetros pendientes probados.
+- Pruebas sintéticas con loops, one-shot, fade/restauración, mezcla, argumentos
+  que parecen canciones y paquetes inválidos aprobadas. También pasan con
+  AddressSanitizer, UndefinedBehaviorSanitizer y LeakSanitizer de Clang.
+- La sesión AST al 70% no produjo muestras saturadas. El motor sigue sin SDL
+  ni codecs de audio adicionales. No se ha certificado escucha ni control físico.
+- Build permanente Release con `-j 4` en `kof98-libretro/build/`, usando las
+  ROM de la referencia sin copiarlas ni modificar su build. Launcher AST:
+  `scripts/run_ast.sh`; admite `--soundtrack original` para volver al AES.
+- El harness recompilado con AST se ejecutó también dentro del sandbox real
+  `org.libretro.RetroArch`: cuatro sesiones aprobadas con los mismos hashes,
+  contadores y pares de audio que fuera del Flatpak. Esto comprueba las
+  dependencias del harness y el acceso al pack; no equivale a cargar un core
+  `.so` ni a aceptar el frontend visual/audio de RetroArch.
+- Build público sin ROM/SDL: aprobados AST sintético, carga inválida y el
+  baseline CPU. El CMake mantiene las pruebas AST independientes del disco.
+- Límites: loop de pista completa; fades con envolvente lineal aproximada.
+  Falta exponer original/AST, volumen y ruta del paquete en el adaptador
+  libretro y probarlos realmente en el Flatpak. Véase `ast.md`.

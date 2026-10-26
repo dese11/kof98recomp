@@ -11,6 +11,10 @@ Esta primera entrega extrae el motor reutilizable (hito 1). Todavía no genera
 core dentro de RetroArch. El registro de entorno y pruebas está en
 `LIBRETRO_PROGRESS.md`.
 
+Agregado: reproducción opcional de música AST del Neo Geo CD en el motor
+reutilizable y el standalone. Preparación, uso y límites en `ast.md`. El futuro
+core debe exponer original/AST, volumen y la ruta de sistema/contenido del pack.
+
 ## Compilación local y pruebas
 
 Desde este checkout, con CMake >= 3.21, C/C++, Ninja y SDL2 para el standalone:

@@ -49,6 +49,7 @@ int main(int argc, char **argv) {
     o.bios_path = "/nonexistent/kof98-bios-test";
     CHECK(ng_runtime_load(&k_kof98, ng_recomp_table, ng_recomp_count, &o) != 0);
     o.bios_path = NULL;
+    if (argc > 2) { o.soundtrack_path=argv[2]; o.soundtrack_volume=70; }
     uint64_t expected[2] = {0};
     for (int run = 0; run < 4; run++) {
         int mode = run % 2;

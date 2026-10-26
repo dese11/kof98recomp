@@ -56,6 +56,11 @@ profiles/
 states/
 dist/
 packaging/
+soundtracks/
+*.cue
+*.iso
+*.pcm
+__pycache__/
 
 # Setup.cmd output
 deps/
