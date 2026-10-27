@@ -150,8 +150,14 @@ void kof98_set_asset_directory(const char *path) {
 /* Loaded art, and the 16-pixel columns cut from it (16 indices per line,
  * 512 lines), made once per background and X. */
 static struct { uint8_t *png; int w, h, tried; } s_art[N_BACKGROUNDS];
-static struct { int bg, x, empty; uint8_t px[16 * 512]; } *s_cols;
-static int s_ncols;
+/* Column pixel pointers are handed to the renderer. Nodes must stay put:
+ * growing a contiguous realloc array invalidated earlier columns this frame. */
+typedef struct art_column_node {
+    int bg, x, empty;
+    uint8_t px[16 * 512];
+    struct art_column_node *next;
+} art_column_node_t;
+static art_column_node_t *s_cols;
 
 static const uint8_t *art_column(int bg, int x) {
     if (!s_art[bg].tried) {
@@ -192,12 +198,12 @@ static const uint8_t *art_column(int bg, int x) {
         }
     }
     if (!s_art[bg].png) return NULL;
-    for (int i = 0; i < s_ncols; i++)
-        if (s_cols[i].bg == bg && s_cols[i].x == x) return s_cols[i].empty ? NULL : s_cols[i].px;
-    s_cols = realloc(s_cols, sizeof(*s_cols) * (size_t)(s_ncols + 1));
-    uint8_t *px = s_cols[s_ncols].px;
-    s_cols[s_ncols].bg = bg; s_cols[s_ncols].x = x; s_ncols++;
-    memset(px, 0, 16 * 512);
+    for (art_column_node_t *c = s_cols; c; c = c->next)
+        if (c->bg == bg && c->x == x) return c->empty ? NULL : c->px;
+    art_column_node_t *column = calloc(1, sizeof(*column));
+    if (!column) return NULL;
+    column->bg = bg; column->x = x; column->next = s_cols; s_cols = column;
+    uint8_t *px = column->px;
     int x0 = (x < 0 ? k_backgrounds[bg].art_xl : k_backgrounds[bg].art_x) + x;
     int any = 0;
     for (int y = 0; y < s_art[bg].h && y < 512; y++)
@@ -205,7 +211,7 @@ static const uint8_t *art_column(int bg, int x) {
             if (x0 + i >= 0 && x0 + i < s_art[bg].w) any |= px[y * 16 + i] = s_art[bg].png[y * s_art[bg].w + x0 + i];
     /* A column the art leaves empty (the picture itself, where a screen
      * shows it shifted) falls back to the copies' other methods. */
-    s_cols[s_ncols - 1].empty = !any;
+    column->empty = !any;
     return any ? px : NULL;
 }
 static void unload(void) {
@@ -215,7 +221,10 @@ static void unload(void) {
         if (!shared) free(s_art[i].png);
     }
     memset(s_art, 0, sizeof(s_art));
-    free(s_cols); s_cols = NULL; s_ncols = 0;
+    while (s_cols) {
+        art_column_node_t *next = s_cols->next;
+        free(s_cols); s_cols = next;
+    }
 }
 #else
 static void unload(void) {}
