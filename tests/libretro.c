@@ -137,6 +137,18 @@ int main(int argc, char **argv) {
             CHECK(videos==4200 && polls==4200 && queries[0]==42000 && queries[1]==42000 && samples==3942400);
             if (run<2) expected[run%2]=hash; else CHECK(hash==expected[run%2]);
             printf("libretro run %u width %u hash %016llx audio %zu\n",run,width,(unsigned long long)hash,samples);
+            size_t state_size=r_serialize_size(); CHECK(state_size>250000 && state_size<1024*1024);
+            unsigned char *a=malloc(state_size), *b=malloc(state_size), *c=malloc(state_size); CHECK(a&&b&&c);
+            CHECK(r_serialize(a,state_size));
+            hash=UINT64_C(14695981039346656037);
+            for (frame=4200;frame<4320;frame++) r_run();
+            uint64_t future=hash; CHECK(r_serialize(b,state_size));
+            CHECK(r_unserialize(a,state_size)); CHECK(r_serialize(c,state_size)); CHECK(!memcmp(a,c,state_size));
+            hash=UINT64_C(14695981039346656037);
+            for (frame=4200;frame<4320;frame++) r_run();
+            CHECK(hash==future && r_serialize(c,state_size) && !memcmp(b,c,state_size));
+            CHECK(!r_unserialize(a,state_size-1)); CHECK(r_serialize(c,state_size) && !memcmp(b,c,state_size));
+            free(a);free(b);free(c);
             r_reset(); clear_frame(); frame=0; r_run(); CHECK(videos==1 && samples<1000);
             /* Disconnected pads must not be polled; reconnection must work. */
             r_set_controller_port_device(1,RETRO_DEVICE_NONE); clear_frame(); r_run(); CHECK(!queries[1] && queries[0]==10);

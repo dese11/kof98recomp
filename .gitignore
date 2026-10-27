@@ -71,3 +71,11 @@ kof98.sh
 
 # macOS
 .DS_Store
+
+# Frontend save states and generated core metadata
+*.state
+*.state[0-9]*
+*.state.auto
+*.state.bak
+*.state.png
+core_info.cache

@@ -1,9 +1,18 @@
 /* Synthetic PCM fixtures only; no proprietary soundtrack or ROM required. */
 #include "ast.h"
+#include "state.h"
 #include <stdio.h>
 #include <string.h>
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x); return 1; } } while (0)
 static const uint8_t m1[]="123456789";
+static int restore_ast(const unsigned char *data, size_t n) {
+    ng_state_t state={(unsigned char *)data,n,0,NGS_CHECK,0}; ast_state(&state);
+    if (state.error) { ast_state_cancel(); return -1; }
+    state.mode=NGS_READ; state.pos=0; ast_state(&state); ast_state_cancel(); return state.error ? -1 : 0;
+}
+static size_t save_ast(unsigned char *data, size_t n) {
+    ng_state_t state={data,n,0,NGS_WRITE,0}; ast_state(&state); return state.error ? 0 : state.pos;
+}
 int main(int argc,char **argv) {
     CHECK(argc==2 || argc==3);
     const char *dir=argv[1];
@@ -60,6 +69,33 @@ int main(int argc,char **argv) {
     CHECK(ast_open(dir,"kof98",m1,9,0)==0 && ast_command(0x30)==1);
     sound[0]=123; sound[1]=-234; ast_mix(sound,1);
     CHECK(sound[0]==123 && sound[1]==-234); /* external volume zero preserves native effects */
+    ast_close();
+    CHECK(ast_open(dir,"kof98",m1,9,100)==0 && ast_command(0x30)==1);
+    unsigned char state[64], again[64];
+    int16_t expected[4000];
+    ast_mix(sound,13); ast_command(0x0a); ast_command(128);
+    size_t size=save_ast(state,sizeof(state)); CHECK(size>0);
+    memset(expected,0,sizeof(expected)); ast_mix(expected,2000);
+    ast_command(0x31); ast_mix(sound,2000); /* different song, then ended one-shot */
+    CHECK(!restore_ast(state,size)); CHECK(save_ast(again,sizeof(again))==size && !memcmp(state,again,size));
+    memset(sound,0,sizeof(sound)); ast_mix(sound,2000); CHECK(!memcmp(sound,expected,sizeof(sound)));
+    ast_command(0x14); ast_command(0x30); size=save_ast(state,sizeof(state));
+    ast_command(0x31); ast_command(0x30);
+    CHECK(!restore_ast(state,size)); CHECK(ast_command(0x31)==0); /* remaining argument restored */
+    ast_command(0x31); ast_mix(sound,1); size=save_ast(state,sizeof(state));
+    memset(expected,0,sizeof(expected)); ast_mix(expected,2000);
+    ast_command(0x30); CHECK(!restore_ast(state,size));
+    memset(sound,0,sizeof(sound)); ast_mix(sound,2000);
+    CHECK(!memcmp(sound,expected,sizeof(sound)) && !ast_current_track());
+    ast_command(0x30); size=save_ast(state,sizeof(state)); ast_command(0x31);
+    CHECK(save_ast(again,sizeof(again))==size);
+    char path[1400], backup[1400];
+    snprintf(path,sizeof(path),"%s/track13.wav",dir); snprintf(backup,sizeof(backup),"%s/track13.tmp",dir);
+    CHECK(!rename(path,backup)); CHECK(restore_ast(state,size)!=0);
+    unsigned char unchanged[64]; CHECK(save_ast(unchanged,sizeof(unchanged))==size && !memcmp(again,unchanged,size));
+    CHECK(!rename(backup,path)); CHECK(!restore_ast(state,size));
+    ast_set_volume(0); CHECK(!restore_ast(state,size)); sound[0]=123;sound[1]=-234;ast_mix(sound,1);
+    CHECK(sound[0]==123 && sound[1]==-234); /* host gain survives a restore */
     ast_close();
     puts("AST mixing, resampling, loop, one-shot, controls, arguments and lifecycle passed");
     return 0;

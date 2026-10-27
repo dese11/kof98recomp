@@ -2,8 +2,10 @@
 
 El core local `kof98_libretro.so` usa el motor recompilado y conserva el
 standalone SDL `build/kof98`. El proyecto original `kof98recomp/` y su AppImage
-se mantienen como referencia. La rama inicial no ofrece savestates, rewind,
-run-ahead, netplay, cheats ni persistencia de memoria/partidas.
+se mantienen como referencia. El core 0.3.0 ofrece savestates versionados y
+restauración comprobada de imagen/audio. Run-ahead, rewind y netplay requieren
+validación específica; no se anuncia todavía compatibilidad de red. No hay
+cheats ni persistencia automática de RAM/cartucho. Ver `states.md`.
 
 ## Compilar
 
@@ -149,8 +151,9 @@ El core implementa la API obligatoria completa, vídeo software XRGB8888,
 pitch `ancho*4`, 224 líneas, `12000000/(768*264)` Hz y audio s16 estéreo
 `4000000/72` Hz en bloques variables. No abre ventanas, no lee dispositivos,
 no duerme y no enlaza SDL. Solo se exportan las funciones `retro_*`.
-`retro_serialize_size()` devuelve cero; serializar y restaurar devuelven falso;
-no se expone RAM como un guardado que todavía no existe.
+`retro_serialize_size()` devuelve 282 658 bytes con contenido cargado y cero
+sin contenido. Guardar/restaurar usa un formato versionado y validado; no se
+expone RAM como un guardado persistente de cartucho que todavía no existe.
 
 El motor es una placa por proceso, no reentrante. Los buffers vencen al
 siguiente frame/reset/descarga. Reset conserva la semántica de hardware previa;

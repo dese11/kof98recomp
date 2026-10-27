@@ -72,6 +72,11 @@ def install(args):
             raise ValueError(f'Ya existe otro paquete AST: {ast_target}')
     write(core, source.read_bytes(), True)
     write(managed / 'info' / 'kof98_libretro.info', (ROOT / 'libretro/kof98_libretro.info').read_bytes())
+    # This directory belongs exclusively to this launcher. Rebuild cached
+    # capabilities after an update (e.g. newly available save states).
+    cache = managed / 'info' / 'core_info.cache'
+    if cache.is_file() and not cache.is_symlink():
+        cache.unlink()
     for name in ('stone.png', 'stone-red.png'):
         write(system / 'kof98' / 'assets' / name, (ROOT / 'assets' / name).read_bytes())
     links = dict(previous.get('links', {}))

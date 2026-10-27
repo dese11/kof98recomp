@@ -102,3 +102,10 @@ Referencias consultadas: documentación de CDDA y drivers de sonido de
 [Z80](https://wiki.neogeodev.org/index.php/Sound_driver). La correspondencia
 de este juego se verificó ejecutando el driver local del CD; no se copió el
 reproductor de otro core ni se incorporó código GPL al motor MIT.
+
+## Estados
+
+El core 0.3.0 conserva pista, fase PCM, argumentos pendientes y fades en sus
+savestates. El paquete debe ser el mismo al restaurar; sus archivos se identifican
+por contenido, no por ruta. El volumen actual del frontend se conserva. Ver
+`states.md` para compatibilidad, pruebas y límites de rollback.

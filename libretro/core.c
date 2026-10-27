@@ -117,7 +117,11 @@ unsigned retro_api_version(void) { return RETRO_API_VERSION; }
 void retro_init(void) {
     struct retro_log_callback l={0};
     if (environment && environment(RETRO_ENVIRONMENT_GET_LOG_INTERFACE,&l)) logger=l.log;
-    log_message(RETRO_LOG_INFO,"Inicializado. Savestates, rewind, run-ahead y netplay aun no disponibles.");
+    if (environment) {
+        uint64_t quirks=RETRO_SERIALIZATION_QUIRK_PLATFORM_DEPENDENT;
+        environment(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS,&quirks);
+    }
+    log_message(RETRO_LOG_INFO,"Inicializado. Savestates versionados disponibles; netplay pendiente de validacion entre equipos.");
 }
 void retro_unload_game(void) {
     if (loaded) {
@@ -136,7 +140,7 @@ void retro_deinit(void) {
 }
 void retro_get_system_info(struct retro_system_info *info) {
     memset(info,0,sizeof(*info));
-    info->library_name="KOF98 Recomp"; info->library_version="0.2.0";
+    info->library_name="KOF98 Recomp"; info->library_version="0.3.0";
     info->valid_extensions="bin"; info->need_fullpath=true; info->block_extract=true;
 }
 void retro_get_system_av_info(struct retro_system_av_info *info) {
@@ -209,9 +213,13 @@ void retro_run(void) {
     if (batch) batch(frame.audio,frame.audio_frames);
     else if (sample) for (size_t i=0;i<frame.audio_frames;i++) sample(frame.audio[i*2],frame.audio[i*2+1]);
 }
-size_t retro_serialize_size(void) { return 0; }
-bool retro_serialize(void *data, size_t n) { (void)data; (void)n; return false; }
-bool retro_unserialize(const void *data, size_t n) { (void)data; (void)n; return false; }
+size_t retro_serialize_size(void) { return ng_runtime_state_size(); }
+bool retro_serialize(void *data, size_t n) { return ng_runtime_serialize(data,n)==0; }
+bool retro_unserialize(const void *data, size_t n) {
+    if (ng_runtime_unserialize(data,n))
+        return fail("Estado incompatible o danado: verifica ROM/BIOS, AST y panoramica de la sesion.");
+    return true;
+}
 void retro_cheat_reset(void) {}
 void retro_cheat_set(unsigned i, bool enabled, const char *code) { (void)i; (void)enabled; (void)code; }
 bool retro_load_game_special(unsigned type, const struct retro_game_info *game, size_t n) { (void)type; (void)game; (void)n; return false; }

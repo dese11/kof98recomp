@@ -206,3 +206,78 @@ Uso y desinstalación reproducibles: `docs/libretro.md` y
 `scripts/install_libretro.py`. Lanzar: `./scripts/run_libretro.sh` desde el
 checkout o ejecutar su ruta absoluta desde cualquier carpeta. No publicar el
 core generado, ROM/BIOS, manifests privados, pistas ni capturas.
+
+## Fase de savestates y base para rollback — 26 de octubre de 2026
+
+El usuario confirmó el funcionamiento del MVP en RetroArch, pidió discutir
+rollback y luego autorizó comenzar por estados completos. Esta fase implementa
+savestates; no declara probado netplay entre equipos ni run-ahead/rewind del
+frontend. Detalles de uso, inventario y formato: `states.md`.
+
+- API común: `ng_runtime_state_size/serialize/unserialize`, conectada a las
+  tres funciones libretro. Formato 1, 282 658 bytes desde el primer frame,
+  codificación little-endian explícita, cabecera de 48 bytes, huellas FNV64 de
+  ROM/BIOS/programa parcheado y AST, CRC32, compatibilidad de modo/geometría.
+- Estado de CPU nativa y contexto auxiliar Musashi, RAM, bancos/vectores,
+  VRAM, paletas, timers, I/O, Z80 y YM2610/ymfm; AST conserva posición fraccional,
+  parser, pista y fades. El volumen permanece como preferencia del frontend.
+  No se guardan punteros, FILE, rutas, ROM, padding ni contadores de perfil.
+- La validación precede a toda modificación; las aperturas AST necesarias se
+  preparan antes de aplicar el estado. Rechazos de buffers cortos, versión,
+  identidad, geometría, CRC y campos inválidos dejan la partida intacta.
+- Se eliminó la consulta a `time()` del RTC: época fija 2000-01-01 UTC y avance
+  por ciclos emulados. El modo AES conserva los resultados de referencia.
+- La revisión de determinismo detectó un defecto previo de los márgenes:
+  `realloc(s_cols)` movía píxeles cuyas direcciones ya estaban en la lista de
+  sprites. ASan reprodujo un heap-use-after-free con VRAM sintética y los PNG
+  públicos. Ahora son nodos de dirección estable, con prueba fría/caliente y
+  descarga repetida. Tras corregirlo, reapareció el hash de referencia 400
+  `85679d3374b1f792`; 320 sigue en `7bb518b96a1bed7a`.
+
+Verificación terminada:
+
+- CTest local 9/9 y pública sin ROM/SDL 7/7. Cobertura de formato/CRC/bounds,
+  AST sintético, caché de gráficos, ciclo de vida y contrato del `.so` real.
+- Checkpoints 0, 1, 20, 180, 600, 1200, 2280, 2299, 2390, 3650, 4200 y 4500:
+  guardar, ejecutar, perturbar el futuro, restaurar y repetir produce bytes
+  de estado, imagen y audio idénticos. Funciona con 320/400, AES y AST, también
+  después de reset, descarga/nueva carga y en un proceso nuevo con otras rutas.
+- Pruebas específicas AST: loops/one-shot, fase fraccional, fade a mitad,
+  comandos con argumentos, cambio de archivo y apertura fallida sin mutación.
+  Las huellas del paquete se calculan al cargar, sin volver a leerlo al guardar.
+- 500 pares guardar/restaurar y 120 correcciones de seis frames. Release en
+  este host: ~3,4 ms/par; comprobación doble de seis frames ~20–22 ms incluyendo
+  ambas simulaciones, serializaciones adicionales y hashes. No es la medida
+  del coste máximo de rollback en red; se deben medir percentiles después.
+- Contrato dentro del Flatpak con AST aprobado, incluida restauración. La
+  prueba de estados/rollback del motor también pasó en su runtime KDE 6.11.
+- ASan+UBSan+LeakSanitizer: suite pública 7/7 y harness completo de estados con
+  AST aprobados. Se instrumentaron motor/serializador/caché; el C recompilado
+  del juego se reutilizó como objetos Release, sin publicarlo. LSan no funciona
+  dentro del sandbox con ptrace; las ejecuciones se hicieron fuera de él.
+- Standalone: PNG/WAV de 1 200 frames y combate de 4 200 frames idénticos a la
+  referencia. Los hashes completos vuelven a coincidir tras corregir la caché.
+- RetroArch Flatpak 1.22.2 real: guardar, pausa, reset y cargar por su interfaz
+  local de comandos, con configuración/directorio privados y drivers nulos.
+  Archivo `.state` de 282 688 bytes, payload del core en offset 16 y CRC
+  comprobado con zlib. El log confirmó reset y carga; `retroarch.cfg` no cambió.
+  No equivale a probar visualmente F2/F4 ni escuchar una restauración real.
+
+Los intentos gráficos de automatización dependían del foco/contexto Wayland.
+La prueba aislada evitó esa dependencia; se desactivó la confirmación de doble
+pulsación solo en su configuración. Sus ajustes de red/control no se copiaron
+al lanzador normal. Se comprobó que las opciones personales actuales (AST
+automático, volumen 50, panorámica desactivada) permanecen sin cambios.
+
+Se instaló core 0.3.0 y `.info` con `savestate=true`, `serialized` y quirk
+`PLATFORM_DEPENDENT`. La caché de metadatos exclusiva del lanzador se invalida
+al actualizar. La configuración actual usa F2 para guardar y F4 para cargar;
+las acciones del menú rápido siguen disponibles. La referencia original y la
+AppImage no se modificaron. Binarios/estados/capturas permanecen privados.
+
+Siguiente hito: medir y verificar run-ahead/rewind y rollback de RetroArch con
+sesiones reproducibles, después dos equipos x86_64 con latencia/pérdida/jitter.
+No marcar `deterministic` en `.info` ni prometer interoperabilidad con GGPO o
+Fightcade sin esas comprobaciones. No hay persistencia automática de SRAM aún.
+
+Toolkit de esta fase fijado en `31b1c00188397935cb51fa4d376b46b34a4875ea`; corrección de caché del juego `84469d0`.
